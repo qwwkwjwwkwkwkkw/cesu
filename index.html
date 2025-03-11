@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NetSpeed OS v2.0</title>
+    <style>
+        :root {
+            --hacker-green: #00ff00;
+            --matrix-bg: #001100;
+        }
+
+        body {
+            background: #000;
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            color: var(--hacker-green);
+            position: relative;
+        }
+
+        /* 任务栏 */
+        #taskbar {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            height: 40px;
+            background: rgba(0, 34, 0, 0.9);
+            border-top: 2px solid var(--hacker-green);
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+        }
+
+        .task-icon {
+            padding: 8px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .task-icon:hover {
+            background: #004400;
+        }
+
+        /* 窗口样式 */
+        .os-shell {
+            position: fixed;
+            border: 2px solid var(--hacker-green);
+            background: rgba(0, 20, 0, 0.9);
+            box-shadow: 0 0 15px var(--hacker-green);
+            min-width: 300px;
+        }
+
+        .window-header {
+            padding: 5px;
+            background: #002200;
+            cursor: move;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* 桌面图标 */
+        #desktop {
+            padding: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, 80px);
+            gap: 20px;
+        }
+
+        .desktop-icon {
+            width: 80px;
+            text-align: center;
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        .desktop-icon:hover {
+            background: rgba(0, 68, 0, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <!-- 桌面图标 -->
+    <div id="desktop">
+        <div class="desktop-icon" ondblclick="openApp('speedTerminal')">
+            📶 NetSpeed
+        </div>
+        <div class="desktop-icon" ondblclick="openApp('explorerWindow')">
+            💻 Explorer
+        </div>
+    </div>
+
+    <!-- 测速终端 -->
+    <div class="os-shell" id="speedTerminal" style="top:100px;left:100px;width:600px">
+        <div class="window-header">
+            <span>NETSPEED TERMINAL</span>
+            <div>
+                <button onclick="minimizeWindow('speedTerminal')">_</button>
+                <button onclick="closeWindow('speedTerminal')">X</button>
+            </div>
+        </div>
+        <div class="terminal-body">
+            <div id="networkGraph" style="height:120px;border:1px solid var(--hacker-green);margin:10px 0"></div>
+            <div class="stats">
+                <p>Download: <span id="downloadSpeed">-- KB/s</span></p>
+                <p>Latency: <span id="networkLatency">-- ms</span></p>
+            </div>
+            <div class="command-line">
+                <input type="text" id="cmdInput" placeholder="CMD> speedtest /start" 
+                       style="width:calc(100% - 60px);background:#000;color:#0f0;border:1px solid #0f0">
+                <button onclick="executeCommand()" style="width:50px">↵</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 资源管理器 -->
+    <div class="os-shell" id="explorerWindow" style="top:200px;left:300px;width:500px">
+        <div class="window-header">
+            <span>SYSTEM EXPLORER</span>
+            <div>
+                <button onclick="minimizeWindow('explorerWindow')">_</button>
+                <button onclick="closeWindow('explorerWindow')">X</button>
+            </div>
+        </div>
+        <div class="terminal-body">
+            <div class="system-stats">
+                <p>Memory: <span id="memUsage">--</span></p>
+                <p>Active Tests: <span id="activeTests">0</span></p>
+                <p>Log Size: <span id="logSize">0 KB</span></p>
+            </div>
+            <div id="speedChart" style="height:150px;border:1px solid #0f0"></div>
+        </div>
+    </div>
+
+    <!-- 任务栏 -->
+    <div id="taskbar">
+        <div class="task-icon" onclick="toggleApp('speedTerminal')">📶 NetSpeed</div>
+        <div class="task-icon" onclick="toggleApp('explorerWindow')">💻 Explorer</div>
+    </div>
+
+<script>
+class NetworkAnalyzer {
+    constructor() {
+        this.testSize = 5 * 1024 * 1024; // 5MB测试文件
+        this.activeTests = 0;
+        this.logs = [];
+        this.speedData = [];
+        this.initTestData();
+    }
+
+    initTestData() {
+        this.testFile = new Blob([new Uint8Array(this.testSize)], {type: 'octet/stream'});
+        this.testUrl = URL.createObjectURL(this.testFile);
+    }
+
+    async startTest() {
+        this.activeTests++;
+        try {
+            const latency = await this.testLatency();
+            const speed = await this.testThroughput();
+            this.log(`Test Complete - ${speed} KB/s | ${latency}ms`);
+        } catch(e) {
+            this.log(`Error: ${e.message}`);
+        }
+        this.activeTests--;
+        this.updateStats();
+    }
+
+    async testLatency() {
+        const start = performance.now();
+        await fetch(`https://httpbin.org/get?t=${Date.now()}`);
+        const latency = performance.now() - start;
+        document.getElementById('networkLatency').textContent = `${latency.toFixed(1)}ms`;
+        return latency;
+    }
+
+    async testThroughput() {
+        const start = performance.now();
+        const response = await fetch(`${this.testUrl}?t=${Date.now()}`);
+        await response.blob();
+        const duration = (performance.now() - start) / 1000;
+        const speedKBps = (this.testSize / duration / 1024).toFixed(1);
+        
+        document.getElementById('downloadSpeed').textContent = `${speedKBps} KB/s`;
+        this.speedData.push(speedKBps);
+        this.drawChart();
+        return speedKBps;
+    }
+
+    log(message) {
+        this.logs.push(`${new Date().toLocaleTimeString()} ${message}`);
+        this.updateStats();
+    }
+
+    updateStats() {
+        document.getElementById('logSize').textContent = 
+            `${(this.logs.length * 0.1).toFixed(1)} KB`;
+        document.getElementById('activeTests').textContent = this.activeTests;
+        document.getElementById('memUsage').textContent = 
+            `${(performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(1)} MB`;
+    }
+
+    drawChart() {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('speedChart');
+        container.innerHTML = '';
+        container.appendChild(canvas);
+
+        canvas.width = container.offsetWidth;
+        canvas.height = container.offsetHeight;
+
+        ctx.strokeStyle = '#0f0';
+        ctx.beginPath();
+        this.speedData.forEach((v, i) => {
+            ctx.lineTo(
+                (i * canvas.width) / 20,
+                canvas.height - v * 2
+            );
+        });
+        ctx.stroke();
+    }
+}
+
+// 窗口管理
+let draggingWindow = null;
+document.addEventListener('mousedown', e => {
+    if(e.target.closest('.window-header')) {
+        draggingWindow = {
+            element: e.target.closest('.os-shell'),
+            offsetX: e.offsetX,
+            offsetY: e.offsetY
+        };
+    }
+});
+
+document.addEventListener('mousemove', e => {
+    if(draggingWindow) {
+        const win = draggingWindow.element;
+        win.style.left = `${e.clientX - draggingWindow.offsetX}px`;
+        win.style.top = `${e.clientY - draggingWindow.offsetY}px`;
+    }
+});
+
+document.addEventListener('mouseup', () => {
+    draggingWindow = null;
+});
+
+// 命令系统
+document.getElementById('cmdInput').addEventListener('keypress', e => {
+    if(e.key === 'Enter') executeCommand();
+});
+
+function executeCommand() {
+    const cmd = document.getElementById('cmdInput').value.toLowerCase();
+    if(cmd.includes('speedtest')) {
+        if(cmd.includes('/stop')) {
+            clearInterval(window.testInterval);
+            analyzer.log('Test Stopped');
+        } else {
+            const interval = cmd.includes('/realtime') ? 3000 : 0;
+            if(interval) {
+                window.testInterval = setInterval(() => analyzer.startTest(), interval);
+            }
+            analyzer.startTest();
+        }
+    }
+    document.getElementById('cmdInput').value = '';
+}
+
+// 应用管理
+function openApp(id) {
+    const app = document.getElementById(id);
+    app.style.display = 'block';
+    app.style.transform = 'none';
+}
+
+function closeWindow(id) {
+    document.getElementById(id).style.display = 'none';
+}
+
+function minimizeWindow(id) {
+    document.getElementById(id).style.transform = 'translateY(calc(100vh - 100px))';
+}
+
+function toggleApp(id) {
+    const app = document.getElementById(id);
+    app.style.display = app.style.display === 'none' ? 'block' : 'none';
+}
+
+// 初始化系统
+const analyzer = new NetworkAnalyzer();
+</script>
+</body>
+</html>
